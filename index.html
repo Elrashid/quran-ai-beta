@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>محفّظ القرآن الكريم بالذكاء الاصطناعي — سورة الفاتحة</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app__header">
+      <h1 class="app__title">محفّظ القرآن الكريم</h1>
+      <p class="app__subtitle">تتبّع التلاوة وتصحيحها لحظياً — نموذج أولي لسورة الفاتحة</p>
+    </header>
+
+    <section class="panel" aria-label="حالة التلاوة">
+      <div class="progress" aria-hidden="true">
+        <div class="progress__bar" id="progressBar"></div>
+      </div>
+      <div class="progress__label">
+        <span id="progressText">٠٪</span>
+        <span id="statusText" class="status status--idle">جاهز</span>
+      </div>
+    </section>
+
+    <main class="panel quran" id="quranText" aria-label="نص سورة الفاتحة">
+      <!-- يُبنى النص ديناميكياً عبر JavaScript -->
+    </main>
+
+    <section class="panel controls">
+      <div class="controls__row">
+        <button id="micBtn" class="btn btn--primary" type="button">
+          <span class="btn__icon">🎙️</span>
+          <span id="micBtnLabel">ابدأ الاستماع</span>
+        </button>
+        <button id="resetBtn" class="btn btn--ghost" type="button">
+          <span class="btn__icon">↺</span>
+          إعادة الضبط
+        </button>
+      </div>
+
+      <details class="manual">
+        <summary>وضع الاختبار اليدوي (بدون ميكروفون)</summary>
+        <p class="manual__hint">
+          اكتب كلمة أو أكثر (مفصولة بمسافة) ثم اضغط Enter لتجربة المحاذاة كما لو
+          نُطقت.
+        </p>
+        <form id="manualForm" class="manual__form">
+          <input
+            id="manualInput"
+            class="manual__input"
+            type="text"
+            placeholder="مثال: بسم الله الرحمن الرحيم"
+            autocomplete="off"
+            dir="rtl"
+          />
+          <button class="btn btn--primary" type="submit">إدخال</button>
+        </form>
+      </details>
+
+      <fieldset class="settings">
+        <legend>الإعدادات</legend>
+        <label class="settings__field">
+          <span>عتبة القبول: <strong id="thresholdValue">0.62</strong></span>
+          <input
+            id="thresholdRange"
+            type="range"
+            min="0.3"
+            max="0.95"
+            step="0.01"
+            value="0.62"
+          />
+        </label>
+        <p class="settings__hint">
+          أعلى = أكثر تشدّداً (مطابقة أدقّ) · أدنى = أكثر تسامحاً.
+        </p>
+      </fieldset>
+    </section>
+
+    <section class="panel legend" aria-label="مفتاح الألوان">
+      <span class="legend__item"><span class="swatch swatch--correct"></span> صحيحة</span>
+      <span class="legend__item"><span class="swatch swatch--current"></span> الموضع الحالي</span>
+      <span class="legend__item"><span class="swatch swatch--error"></span> اختلاف</span>
+    </section>
+
+    <footer class="app__footer">
+      <p id="engineNote" class="note"></p>
+    </footer>
+  </div>
+
+  <!-- منطق المحاذاة مستقلّ عن محرّك الصوت (راجع وثيقة المشروع: القسمان 5 و6) -->
+  <script src="js/quran-data.js"></script>
+  <script src="js/normalize.js"></script>
+  <script src="js/aligner.js"></script>
+  <script src="js/speech.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

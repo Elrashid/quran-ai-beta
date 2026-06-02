@@ -1,0 +1,11 @@
+{
+  "name": "quran-ai-beta",
+  "version": "0.1.0",
+  "description": "محفّظ القرآن الكريم بالذكاء الاصطناعي — نموذج أولي لتتبّع التلاوة وتصحيحها (سورة الفاتحة)",
+  "private": true,
+  "scripts": {
+    "test": "node test/aligner.test.js",
+    "start": "node server.js"
+  },
+  "license": "MIT"
+}
