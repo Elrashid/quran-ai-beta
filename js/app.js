@@ -112,42 +112,73 @@
     render();
   }
 
-  // ——— محرّك الصوت ———
+  // ——— محرّك الصوت (Whisper محلياً عبر Transformers.js) ———
   let engine = null;
+
+  function setMicLabel(text) {
+    els.micBtnLabel.textContent = text;
+  }
+
   if (window.SpeechEngine.isSupported()) {
     engine = new window.SpeechEngine({
-      lang: "ar-SA",
       onWord: function (word) {
         handleWord(word);
       },
       onState: function (listening) {
         els.micBtn.classList.toggle("btn--recording", listening);
-        els.micBtnLabel.textContent = listening ? "إيقاف الاستماع" : "ابدأ الاستماع";
-        if (listening) setStatus("يستمع…", "listening");
-        else if (!aligner.isComplete()) setStatus("متوقّف", "idle");
+        if (!listening) {
+          setMicLabel("ابدأ الاستماع");
+          if (!aligner.isComplete()) setStatus("متوقّف", "idle");
+        }
+      },
+      onStatus: function (state) {
+        // loading | ready | listening | recognizing
+        if (state === "loading") {
+          setStatus("جارٍ تحميل نموذج Whisper…", "listening");
+          setMicLabel("جارٍ التحميل…");
+        } else if (state === "ready") {
+          if (!engine.listening) setStatus("النموذج جاهز", "idle");
+        } else if (state === "listening") {
+          setMicLabel("إيقاف الاستماع");
+          setStatus("يستمع…", "listening");
+        } else if (state === "recognizing") {
+          setMicLabel("إيقاف الاستماع");
+          setStatus("جارٍ التعرّف…", "listening");
+        }
+      },
+      onModelProgress: function (info) {
+        // نعرض نسبة تحميل ملفّ النموذج الجاري (info.progress في المدى 0–100).
+        if (info && info.status === "progress" && typeof info.progress === "number") {
+          const pct = Math.min(100, Math.round(info.progress));
+          setStatus("تحميل النموذج… " + toArabicDigits(pct) + "٪", "listening");
+        }
       },
       onError: function (err) {
-        setStatus("خطأ في الصوت: " + describeError(err), "error");
+        setStatus("خطأ: " + describeError(err), "error");
         els.micBtn.classList.remove("btn--recording");
-        els.micBtnLabel.textContent = "ابدأ الاستماع";
+        setMicLabel("ابدأ الاستماع");
       },
     });
     els.engineNote.textContent =
-      "محرّك الصوت: Web Speech API (يتطلّب اتصالاً وإذن الميكروفون، ويعمل أفضل في Chrome).";
+      "محرّك الصوت: Whisper (Xenova/whisper-base) يعمل محلياً في متصفّحك عبر Transformers.js. " +
+      "يُحمَّل النموذج مرّة واحدة (~عشرات الميغابايت) ثم يُخزَّن للعمل دون إنترنت. يعمل أفضل في Chrome/Edge.";
   } else {
     els.micBtn.disabled = true;
-    els.micBtnLabel.textContent = "الميكروفون غير مدعوم";
+    setMicLabel("الميكروفون غير مدعوم");
     els.engineNote.textContent =
-      "متصفّحك لا يدعم Web Speech API. استخدم وضع الاختبار اليدوي بالأسفل، أو جرّب متصفّح Chrome.";
+      "متصفّحك لا يدعم تشغيل النموذج المحلي (يحتاج Web Worker وWeb Audio وسياق https/localhost). " +
+      "استخدم وضع الاختبار اليدوي بالأسفل، أو جرّب Chrome عبر رابط https.";
   }
 
   function describeError(err) {
     const map = {
       "not-allowed": "رُفض إذن الميكروفون",
-      "service-not-allowed": "خدمة التعرّف غير متاحة",
       unsupported: "غير مدعوم في هذا المتصفّح",
-      network: "تعذّر الاتصال بالشبكة",
+      "worker-error": "تعذّر تشغيل عامل النموذج",
     };
+    if (typeof err === "string" && /fetch|network|load model|Failed/i.test(err)) {
+      return "تعذّر تحميل النموذج (تحقّق من الاتصال عند أول مرّة)";
+    }
     return map[err] || err;
   }
 
