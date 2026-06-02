@@ -22,6 +22,7 @@
     this.onError = options.onError || function () {};
     this.onStatus = options.onStatus || function () {}; // loading|ready|listening|recognizing
     this.onModelProgress = options.onModelProgress || function () {};
+    this.onLevel = options.onLevel || function () {}; // (rms, speaking) لكل إطار صوتي
 
     // عتبات كشف النشاط الصوتي (VAD) — قابلة للضبط.
     this.speechThreshold = options.speechThreshold || 0.012; // طاقة RMS لاعتبار الإطار كلاماً.
@@ -85,6 +86,11 @@
     this.worker.onerror = function (e) {
       self.onError((e && e.message) || "worker-error");
     };
+  };
+
+  // ضبط عتبة كشف النشاط الصوتي لحظياً.
+  SpeechEngine.prototype.setSpeechThreshold = function (t) {
+    this.speechThreshold = t;
   };
 
   // بدء تحميل النموذج مسبقاً دون فتح الميكروفون.
@@ -154,6 +160,9 @@
     for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
     const rms = Math.sqrt(sum / input.length);
     const speaking = rms >= this.speechThreshold;
+
+    // أبلغ طبقة العرض بمستوى الصوت وحالة الكشف لتحديث المقياس لحظياً.
+    this.onLevel(rms, speaking);
 
     if (speaking) {
       this._inSpeech = true;

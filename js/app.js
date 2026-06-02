@@ -24,7 +24,19 @@
     thresholdRange: document.getElementById("thresholdRange"),
     thresholdValue: document.getElementById("thresholdValue"),
     engineNote: document.getElementById("engineNote"),
+    modelLoad: document.getElementById("modelLoad"),
+    modelLoadBar: document.getElementById("modelLoadBar"),
+    modelLoadPct: document.getElementById("modelLoadPct"),
+    modelLoadDetail: document.getElementById("modelLoadDetail"),
+    meterFill: document.getElementById("meterFill"),
+    meterThreshold: document.getElementById("meterThreshold"),
+    vadState: document.getElementById("vadState"),
+    vadRange: document.getElementById("vadRange"),
+    vadValue: document.getElementById("vadValue"),
   };
+
+  // أعلى مستوى صوت يُعرَض كنسبة 100% على المقياس (لتحويل RMS إلى عرض مرئي).
+  const METER_MAX_RMS = 0.15;
 
   const aligner = new window.Aligner(surah.verses, {
     threshold: parseFloat(els.thresholdRange.value),
@@ -119,8 +131,55 @@
     els.micBtnLabel.textContent = text;
   }
 
+  // ——— تقدّم تحميل النموذج (تجميع عبر ملفّات النموذج المتعدّدة) ———
+  const loadFiles = {}; // key -> { loaded, total }
+
+  function updateModelLoad() {
+    let loaded = 0;
+    let total = 0;
+    for (const k in loadFiles) {
+      if (loadFiles[k].total > 0) {
+        loaded += loadFiles[k].loaded;
+        total += loadFiles[k].total;
+      }
+    }
+    if (total === 0) return;
+    const pct = Math.min(100, Math.round((loaded / total) * 100));
+    els.modelLoad.hidden = false;
+    els.modelLoadBar.style.width = pct + "%";
+    els.modelLoadPct.textContent = toArabicDigits(pct) + "٪";
+    const mb = function (n) {
+      return toArabicDigits((n / (1024 * 1024)).toFixed(1));
+    };
+    els.modelLoadDetail.textContent = mb(loaded) + " / " + mb(total) + " ميغابايت";
+  }
+
+  function hideModelLoad() {
+    els.modelLoad.hidden = true;
+  }
+
+  // ——— مقياس مستوى الصوت ———
+  function updateMeter(rms, speaking) {
+    const pct = Math.min(100, (rms / METER_MAX_RMS) * 100);
+    els.meterFill.style.width = pct + "%";
+    els.meterFill.classList.toggle("is-speaking", !!speaking);
+    els.vadState.textContent = speaking ? "كلام" : "صمت";
+    els.vadState.className = "vad " + (speaking ? "vad--speaking" : "vad--idle");
+  }
+
+  function resetMeter() {
+    updateMeter(0, false);
+  }
+
+  // موضع علامة العتبة على المقياس (يُحدَّث مع منزلق الحساسية).
+  function updateThresholdMarker(t) {
+    const pct = Math.min(100, (t / METER_MAX_RMS) * 100);
+    els.meterThreshold.style.right = pct + "%";
+  }
+
   if (window.SpeechEngine.isSupported()) {
     engine = new window.SpeechEngine({
+      speechThreshold: parseFloat(els.vadRange.value),
       onWord: function (word) {
         handleWord(word);
       },
@@ -128,6 +187,7 @@
         els.micBtn.classList.toggle("btn--recording", listening);
         if (!listening) {
           setMicLabel("ابدأ الاستماع");
+          resetMeter();
           if (!aligner.isComplete()) setStatus("متوقّف", "idle");
         }
       },
@@ -136,9 +196,12 @@
         if (state === "loading") {
           setStatus("جارٍ تحميل نموذج Whisper…", "listening");
           setMicLabel("جارٍ التحميل…");
+          els.modelLoad.hidden = false;
         } else if (state === "ready") {
+          hideModelLoad();
           if (!engine.listening) setStatus("النموذج جاهز", "idle");
         } else if (state === "listening") {
+          hideModelLoad();
           setMicLabel("إيقاف الاستماع");
           setStatus("يستمع…", "listening");
         } else if (state === "recognizing") {
@@ -147,18 +210,27 @@
         }
       },
       onModelProgress: function (info) {
-        // نعرض نسبة تحميل ملفّ النموذج الجاري (info.progress في المدى 0–100).
-        if (info && info.status === "progress" && typeof info.progress === "number") {
-          const pct = Math.min(100, Math.round(info.progress));
-          setStatus("تحميل النموذج… " + toArabicDigits(pct) + "٪", "listening");
+        if (!info || !info.file) return;
+        const key = (info.name || "") + "/" + info.file;
+        if (typeof info.total === "number" && info.total > 0) {
+          loadFiles[key] = {
+            loaded: info.status === "done" ? info.total : info.loaded || 0,
+            total: info.total,
+          };
+          updateModelLoad();
         }
+      },
+      onLevel: function (rms, speaking) {
+        updateMeter(rms, speaking);
       },
       onError: function (err) {
         setStatus("خطأ: " + describeError(err), "error");
         els.micBtn.classList.remove("btn--recording");
         setMicLabel("ابدأ الاستماع");
+        hideModelLoad();
       },
     });
+    updateThresholdMarker(parseFloat(els.vadRange.value));
     els.engineNote.textContent =
       "محرّك الصوت: Whisper (Xenova/whisper-base) يعمل محلياً في متصفّحك عبر Transformers.js. " +
       "يُحمَّل النموذج مرّة واحدة (~عشرات الميغابايت) ثم يُخزَّن للعمل دون إنترنت. يعمل أفضل في Chrome/Edge.";
@@ -211,6 +283,13 @@
     els.thresholdValue.textContent = t.toFixed(2);
   });
 
+  els.vadRange.addEventListener("input", function () {
+    const t = parseFloat(els.vadRange.value);
+    if (engine) engine.setSpeechThreshold(t);
+    els.vadValue.textContent = t.toFixed(3);
+    updateThresholdMarker(t);
+  });
+
   // ——— أدوات ———
   function toArabicDigits(n) {
     const map = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
@@ -222,5 +301,8 @@
   // ——— التهيئة ———
   buildText();
   render();
+  resetMeter();
+  updateThresholdMarker(parseFloat(els.vadRange.value));
+  els.vadValue.textContent = parseFloat(els.vadRange.value).toFixed(3);
   setStatus("جاهز", "idle");
 })();

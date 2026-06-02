@@ -42,6 +42,33 @@
         </button>
       </div>
 
+      <!-- تقدّم تحميل النموذج (يظهر فقط أثناء التحميل) -->
+      <div id="modelLoad" class="model-load" hidden>
+        <div class="model-load__head">
+          <span>تحميل نموذج Whisper…</span>
+          <span id="modelLoadPct">٠٪</span>
+        </div>
+        <div class="bar" aria-hidden="true">
+          <div class="bar__fill" id="modelLoadBar"></div>
+        </div>
+        <div class="model-load__detail" id="modelLoadDetail"></div>
+      </div>
+
+      <!-- مقياس مستوى الصوت ومؤشّر كشف الكلام -->
+      <div class="meter">
+        <div class="meter__head">
+          <span>مستوى الصوت</span>
+          <span id="vadState" class="vad vad--idle">صمت</span>
+        </div>
+        <div class="meter__track" aria-hidden="true">
+          <div class="meter__fill" id="meterFill"></div>
+          <div class="meter__threshold" id="meterThreshold"></div>
+        </div>
+        <p class="meter__hint">
+          الخطّ العمودي = عتبة الكشف. يبدأ التسجيل عندما يتجاوز المستوى العتبة.
+        </p>
+      </div>
+
       <details class="manual">
         <summary>وضع الاختبار اليدوي (بدون ميكروفون)</summary>
         <p class="manual__hint">
@@ -76,6 +103,22 @@
         </label>
         <p class="settings__hint">
           أعلى = أكثر تشدّداً (مطابقة أدقّ) · أدنى = أكثر تسامحاً.
+        </p>
+
+        <label class="settings__field">
+          <span>حساسية كشف الصوت (VAD): <strong id="vadValue">0.012</strong></span>
+          <input
+            id="vadRange"
+            type="range"
+            min="0.002"
+            max="0.06"
+            step="0.001"
+            value="0.012"
+          />
+        </label>
+        <p class="settings__hint">
+          أدنى = أكثر حساسية (يلتقط الصوت الخافت) · أعلى = يتجاهل الضجيج ويتطلّب
+          صوتاً أوضح.
         </p>
       </fieldset>
     </section>

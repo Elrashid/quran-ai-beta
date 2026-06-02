@@ -224,6 +224,92 @@ body {
   font-size: 1.15rem;
 }
 
+/* ——— تقدّم تحميل النموذج ——— */
+.model-load {
+  margin-top: 14px;
+}
+.model-load__head,
+.meter__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+  margin-bottom: 6px;
+  color: var(--muted);
+}
+.bar {
+  height: 10px;
+  background: var(--panel-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.bar__fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), var(--correct));
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+.model-load__detail {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* ——— مقياس مستوى الصوت + كشف الكلام ——— */
+.meter {
+  margin-top: 16px;
+}
+.meter__track {
+  position: relative;
+  height: 14px;
+  background: var(--panel-2);
+  border-radius: 999px;
+  /* overflow مرئي حتى تظهر علامة العتبة الأطول من المسار؛ التعبئة مدوّرة بنفسها. */
+  overflow: visible;
+}
+.meter__fill {
+  height: 100%;
+  width: 0%;
+  background: var(--muted);
+  border-radius: 999px;
+  transition: width 0.08s linear, background 0.15s ease;
+}
+.meter__fill.is-speaking {
+  background: var(--correct);
+}
+/* علامة العتبة: خطّ عمودي فوق المسار. overflow مخفي على المسار، لذا نضعها
+   كعنصر منفصل غير متأثّر بالقصّ عبر z-index ووضعها داخل المسار بحوافّ. */
+.meter__threshold {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 3px;
+  right: 12%; /* تُضبط ديناميكياً */
+  background: var(--current);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(15, 20, 25, 0.6);
+}
+.meter__hint {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin: 8px 0 0;
+}
+.vad {
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+}
+.vad--idle {
+  color: var(--muted);
+  background: var(--panel-2);
+}
+.vad--speaking {
+  color: #0f1419;
+  background: var(--correct);
+}
+
 /* ——— الوضع اليدوي ——— */
 .manual {
   margin-top: 16px;
