@@ -24,6 +24,7 @@
     this.onModelProgress = options.onModelProgress || function () {};
     this.onLevel = options.onLevel || function () {}; // (rms, speaking) لكل إطار صوتي
     this.onBackend = options.onBackend || function () {}; // ({device, threaded, threads})
+    this.onProc = options.onProc || function () {}; // (tag, message) أحداث المعالجة للتشخيص
 
     // عتبات كشف النشاط الصوتي (VAD) — قابلة للضبط. خُفِّضت لتقليل زمن الاستجابة.
     this.speechThreshold = options.speechThreshold || 0.012; // طاقة RMS لاعتبار الإطار كلاماً.
@@ -48,6 +49,7 @@
     this._speechRun = 0;
     this._jobId = 0;
     this._pending = 0; // عدد مقاطع التعرّف الجارية.
+    this._sendTimes = {}; // id -> طابع زمني للإرسال (لقياس زمن التعرّف).
   }
 
   // مدعوم متى توفّر العامل والميكروفون وسياق الصوت (وسياق آمن https/localhost).
@@ -79,10 +81,15 @@
         self.onStatus(self.listening ? "listening" : "ready");
       } else if (m.type === "result") {
         self._pending = Math.max(0, self._pending - 1);
-        const tokens = (m.text || "")
-          .trim()
-          .split(/\s+/)
-          .filter(Boolean);
+        const sent = self._sendTimes[m.id];
+        const lat = sent ? Math.round(performance.now() - sent) : -1;
+        delete self._sendTimes[m.id];
+        const text = (m.text || "").trim();
+        self.onProc(
+          "asr",
+          "تعرّف #" + m.id + (lat >= 0 ? " (" + lat + "مﺙ)" : "") + ": «" + text + "»"
+        );
+        const tokens = text.split(/\s+/).filter(Boolean);
         for (let i = 0; i < tokens.length; i++) self.onWord(tokens[i], true);
         if (self._pending === 0 && self.listening) self.onStatus("listening");
       } else if (m.type === "error") {
@@ -137,6 +144,14 @@
 
     const self = this;
     const frameMs = (4096 / this.audioCtx.sampleRate) * 1000;
+    this.onProc(
+      "mic",
+      "الميكروفون مفتوح — معدّل العيّنات " +
+        this.audioCtx.sampleRate +
+        "هرتز، إطار ≈ " +
+        Math.round(frameMs) +
+        "مﺙ"
+    );
     this.processor.onaudioprocess = function (ev) {
       self._handleFrame(ev.inputBuffer.getChannelData(0), frameMs);
     };
@@ -210,10 +225,17 @@
     }
 
     const down = downsample(merged, this.audioCtx.sampleRate, TARGET_RATE);
+    const segMs = Math.round((samples / this.audioCtx.sampleRate) * 1000);
+    const id = ++this._jobId;
     this._pending++;
+    this._sendTimes[id] = performance.now();
     this.onStatus("recognizing");
+    this.onProc(
+      "seg",
+      "مقطع #" + id + ": " + segMs + "مﺙ، " + down.length + " عيّنة @16ك → إرسال"
+    );
     this.worker.postMessage(
-      { type: "transcribe", id: ++this._jobId, audio: down },
+      { type: "transcribe", id: id, audio: down },
       [down.buffer] // نقل الملكية لتفادي النسخ.
     );
   };
@@ -264,6 +286,7 @@
     this.stream = null;
     this._resetSegment();
 
+    this.onProc("mic", "أُغلق الميكروفون.");
     this.onState(false);
   };
 

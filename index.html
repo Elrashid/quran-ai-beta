@@ -10,6 +10,8 @@
   <link rel="stylesheet" href="css/styles.css" />
   <!-- يُمكّن العزل عبر الأصول لتسريع WASM متعدّد الخيوط (يجب أن يسبق بقية السكربتات) -->
   <script src="coi-serviceworker.js"></script>
+  <!-- لوحة التشخيص: تُحمَّل مبكراً لتلتقط السجلّ والأخطاء منذ البداية -->
+  <script src="js/debug.js"></script>
 </head>
 <body>
   <div class="app">
@@ -129,6 +131,31 @@
       <span class="legend__item"><span class="swatch swatch--correct"></span> صحيحة</span>
       <span class="legend__item"><span class="swatch swatch--current"></span> الموضع الحالي</span>
       <span class="legend__item"><span class="swatch swatch--error"></span> اختلاف</span>
+    </section>
+
+    <section class="panel debug" aria-label="لوحة التشخيص">
+      <details open>
+        <summary>🩺 لوحة التشخيص (Debug)</summary>
+
+        <h3 class="debug__title">الفحوص الصحّية</h3>
+        <div class="debug__health" id="debugHealth"></div>
+
+        <div class="debug__bar">
+          <button id="debugCopy" class="btn btn--ghost btn--sm" type="button">
+            نسخ السجل
+          </button>
+          <button id="debugClear" class="btn btn--ghost btn--sm" type="button">
+            مسح
+          </button>
+          <label class="debug__check">
+            <input type="checkbox" id="debugAutoscroll" checked />
+            تمرير تلقائي
+          </label>
+        </div>
+
+        <h3 class="debug__title">السجل (console + المعالجة)</h3>
+        <pre class="debug__log" id="debugLog" dir="ltr"></pre>
+      </details>
     </section>
 
     <footer class="app__footer">

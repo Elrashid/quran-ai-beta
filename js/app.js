@@ -120,12 +120,36 @@
   // ——— معالجة كلمة (مصدر مشترك: صوت أو يدوي) ———
   function handleWord(rawWord) {
     if (!rawWord) return;
-    aligner.pushWord(rawWord);
+    const res = aligner.pushWord(rawWord);
+    if (window.Debug) {
+      if (res.matched) {
+        window.Debug.log(
+          "كلمة «" +
+            rawWord +
+            "» ✓ طابقت #" +
+            res.matchedIndex +
+            " (تشابه " +
+            res.score.toFixed(2) +
+            ") → المرساة " +
+            aligner.anchor
+        );
+      } else {
+        window.Debug.log(
+          "كلمة «" +
+            rawWord +
+            "» ✗ لا مطابقة (أفضل تشابه " +
+            res.score.toFixed(2) +
+            ") عند #" +
+            res.expectedIndex
+        );
+      }
+    }
     render();
   }
 
   // ——— محرّك الصوت (Whisper محلياً عبر Transformers.js) ———
   let engine = null;
+  let lastLevelLog = 0;
 
   function setMicLabel(text) {
     els.micBtnLabel.textContent = text;
@@ -191,7 +215,11 @@
           if (!aligner.isComplete()) setStatus("متوقّف", "idle");
         }
       },
+      onProc: function (tag, msg) {
+        if (window.Debug) window.Debug.log("[" + tag + "] " + msg);
+      },
       onStatus: function (state) {
+        if (window.Debug) window.Debug.log("الحالة: " + state);
         // loading | ready | listening | recognizing
         if (state === "loading") {
           setStatus("جارٍ تحميل نموذج Whisper…", "listening");
@@ -211,6 +239,13 @@
       },
       onModelProgress: function (info) {
         if (!info || !info.file) return;
+        if (window.Debug && (info.status === "initiate" || info.status === "done")) {
+          window.Debug.log(
+            "نموذج: " +
+              (info.status === "initiate" ? "بدء تنزيل " : "اكتمل ") +
+              info.file
+          );
+        }
         const key = (info.name || "") + "/" + info.file;
         if (typeof info.total === "number" && info.total > 0) {
           loadFiles[key] = {
@@ -222,6 +257,17 @@
       },
       onLevel: function (rms, speaking) {
         updateMeter(rms, speaking);
+        // مؤشّر كشف حيّ في لوحة التشخيص (مُخمَّد إلى ~٤ مرّات/ثانية).
+        const now = Date.now();
+        if (window.Debug && now - lastLevelLog > 250) {
+          lastLevelLog = now;
+          window.Debug.health(
+            "level",
+            "كشف الصوت (حيّ)",
+            speaking ? "ok" : "info",
+            "RMS " + rms.toFixed(3) + (speaking ? " — كلام" : " — صمت")
+          );
+        }
       },
       onBackend: function (info) {
         const dev =
@@ -235,24 +281,37 @@
           "المحرّك: Whisper-tiny محلياً عبر Transformers.js — يعمل على " +
           dev +
           ". النموذج مخزَّن في المتصفّح للعمل دون إنترنت.";
+        if (window.Debug) {
+          window.Debug.health("engine", "محرّك التعرّف", "ok", dev);
+          window.Debug.log("المحرّك جاهز: " + dev);
+        }
       },
       onError: function (err) {
         setStatus("خطأ: " + describeError(err), "error");
         els.micBtn.classList.remove("btn--recording");
         setMicLabel("ابدأ الاستماع");
         hideModelLoad();
+        if (window.Debug) {
+          window.Debug.error("خطأ المحرّك: " + err);
+          window.Debug.health("engine", "محرّك التعرّف", "fail", describeError(err));
+        }
       },
     });
     updateThresholdMarker(parseFloat(els.vadRange.value));
     els.engineNote.textContent =
       "محرّك الصوت: Whisper-tiny يعمل محلياً عبر Transformers.js (WebGPU عند توفّره، وإلا WASM متعدّد الخيوط). " +
       "يُحمَّل النموذج مرّة واحدة ثم يُخزَّن للعمل دون إنترنت. يعمل أفضل في Chrome/Edge.";
+    if (window.Debug) window.Debug.log("SpeechEngine مدعوم — جاهز للبدء.");
   } else {
     els.micBtn.disabled = true;
     setMicLabel("الميكروفون غير مدعوم");
     els.engineNote.textContent =
       "متصفّحك لا يدعم تشغيل النموذج المحلي (يحتاج Web Worker وWeb Audio وسياق https/localhost). " +
       "استخدم وضع الاختبار اليدوي بالأسفل، أو جرّب Chrome عبر رابط https.";
+    if (window.Debug) {
+      window.Debug.error("SpeechEngine غير مدعوم في هذا المتصفّح.");
+      window.Debug.health("engine", "محرّك التعرّف", "fail", "غير مدعوم");
+    }
   }
 
   function describeError(err) {
@@ -270,6 +329,8 @@
   // ——— الأحداث ———
   els.micBtn.addEventListener("click", function () {
     if (!engine) return;
+    if (window.Debug)
+      window.Debug.log("زر الميكروفون: " + (engine.listening ? "إيقاف" : "بدء"));
     if (engine.listening) engine.stop();
     else engine.start();
   });
@@ -318,4 +379,8 @@
   updateThresholdMarker(parseFloat(els.vadRange.value));
   els.vadValue.textContent = parseFloat(els.vadRange.value).toFixed(3);
   setStatus("جاهز", "idle");
+  if (window.Debug) {
+    window.Debug.log("تهيئة التطبيق — " + aligner.words.length + " كلمة في النص.");
+    window.Debug.refresh();
+  }
 })();
