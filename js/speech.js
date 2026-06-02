@@ -23,12 +23,13 @@
     this.onStatus = options.onStatus || function () {}; // loading|ready|listening|recognizing
     this.onModelProgress = options.onModelProgress || function () {};
     this.onLevel = options.onLevel || function () {}; // (rms, speaking) لكل إطار صوتي
+    this.onBackend = options.onBackend || function () {}; // ({device, threaded, threads})
 
-    // عتبات كشف النشاط الصوتي (VAD) — قابلة للضبط.
+    // عتبات كشف النشاط الصوتي (VAD) — قابلة للضبط. خُفِّضت لتقليل زمن الاستجابة.
     this.speechThreshold = options.speechThreshold || 0.012; // طاقة RMS لاعتبار الإطار كلاماً.
-    this.silenceMs = options.silenceMs || 700; // مدّة الصمت التي تُنهي المقطع.
-    this.minSpeechMs = options.minSpeechMs || 350; // أقل كلام لاعتماد المقطع.
-    this.maxSegmentMs = options.maxSegmentMs || 12000; // حدّ أقصى لطول المقطع.
+    this.silenceMs = options.silenceMs || 450; // مدّة الصمت التي تُنهي المقطع.
+    this.minSpeechMs = options.minSpeechMs || 250; // أقل كلام لاعتماد المقطع.
+    this.maxSegmentMs = options.maxSegmentMs || 8000; // حدّ أقصى لطول المقطع.
 
     this.listening = false;
     this.modelReady = false;
@@ -70,6 +71,11 @@
         self.onModelProgress(m.data);
       } else if (m.type === "ready") {
         self.modelReady = true;
+        self.onBackend({
+          device: m.device,
+          threaded: m.threaded,
+          threads: m.threads,
+        });
         self.onStatus(self.listening ? "listening" : "ready");
       } else if (m.type === "result") {
         self._pending = Math.max(0, self._pending - 1);

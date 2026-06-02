@@ -1,49 +1,104 @@
 /*
- * عامل الويب (Web Worker) لتشغيل نموذج Whisper محلياً عبر Transformers.js
- * (راجع وثيقة المشروع: المرحلة 2 — نقل المحرّك إلى نموذج محلي للعمل دون إنترنت).
+ * عامل الويب (Web Worker) لتشغيل نموذج Whisper محلياً عبر Transformers.js v3
+ * (راجع وثيقة المشروع: المرحلة 2 — نموذج محلي يعمل دون إنترنت).
  *
- * يعمل التعرّف داخل خيط مستقلّ حتى لا يتجمّد العرض أثناء تحميل النموذج أو
- * أثناء الاستدلال. النموذج يُحمَّل مرّة واحدة ويُخزَّن في ذاكرة المتصفّح، فيعمل
- * دون إنترنت بعد أول تحميل.
+ * تحسينات الأداء:
+ *  - يُفضّل تشغيل النموذج على WebGPU عند توفّره (أسرع بكثير)، مع تراجع آمن إلى
+ *    WASM (الذي يصبح متعدّد الخيوط متى كانت الصفحة معزولة عبر الأصول).
+ *  - يستخدم نموذج whisper-tiny الأخفّ والأسرع.
+ *  - تسخين مبدئي (warm-up) لتفادي بطء أوّل تعرّف (تصريف مظلّلات WebGPU).
  */
 
 import {
   pipeline,
   env,
-} from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
+} from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3";
 
-// لا نبحث عن نماذج محلية؛ نجلبها من Hugging Face Hub ونخزّنها في المتصفّح.
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
-const MODEL_ID = "Xenova/whisper-base"; // متعدّد اللغات، يدعم العربية.
+const MODEL_ID = "Xenova/whisper-tiny"; // خفيف وسريع، متعدّد اللغات (يدعم العربية).
 
 let transcriber = null;
 let loadingPromise = null;
+let activeDevice = "wasm";
 // سلسلة وعود لمعالجة مقطع صوتي واحد في كل مرة (تجنّب تداخل الاستدلال).
 let queue = Promise.resolve();
+
+async function supportsWebGPU() {
+  try {
+    if (typeof navigator === "undefined" || !navigator.gpu) return false;
+    const adapter = await navigator.gpu.requestAdapter();
+    return !!adapter;
+  } catch (e) {
+    return false;
+  }
+}
+
+function buildOptions(device) {
+  const opts = {
+    device: device,
+    progress_callback: function (info) {
+      self.postMessage({ type: "progress", data: info });
+    },
+  };
+  if (device === "webgpu") {
+    // ترميز fp32 (متوافق مع أغلب العتاد) وفكّ ترميز q4 (أسرع وأخفّ).
+    opts.dtype = { encoder_model: "fp32", decoder_model_merged: "q4" };
+  } else {
+    opts.dtype = "q8"; // مكمَّم للسرعة والحجم على WASM.
+  }
+  return opts;
+}
+
+async function create(device) {
+  return pipeline("automatic-speech-recognition", MODEL_ID, buildOptions(device));
+}
 
 function load() {
   if (transcriber) return Promise.resolve(transcriber);
   if (loadingPromise) return loadingPromise;
 
-  loadingPromise = pipeline("automatic-speech-recognition", MODEL_ID, {
-    quantized: true,
-    progress_callback: function (info) {
-      // info: { status, name, file, loaded, total, progress }
-      self.postMessage({ type: "progress", data: info });
-    },
-  })
-    .then(function (t) {
-      transcriber = t;
-      self.postMessage({ type: "ready" });
-      return t;
-    })
-    .catch(function (err) {
-      loadingPromise = null;
-      self.postMessage({ type: "error", error: errMsg(err) });
-      throw err;
+  loadingPromise = (async function () {
+    const wantGPU = await supportsWebGPU();
+    try {
+      transcriber = await create(wantGPU ? "webgpu" : "wasm");
+      activeDevice = wantGPU ? "webgpu" : "wasm";
+    } catch (err) {
+      if (wantGPU) {
+        // تعذّر WebGPU لأي سبب → تراجع إلى WASM.
+        transcriber = await create("wasm");
+        activeDevice = "wasm";
+      } else {
+        throw err;
+      }
+    }
+
+    // تسخين مبدئي بمقطع صامت قصير لتصريف المظلّلات/التهيئة.
+    try {
+      await transcriber(new Float32Array(16000), {
+        language: "arabic",
+        task: "transcribe",
+      });
+    } catch (e) {
+      /* تجاهل أخطاء التسخين */
+    }
+
+    self.postMessage({
+      type: "ready",
+      device: activeDevice,
+      threaded: !!self.crossOriginIsolated,
+      threads:
+        self.crossOriginIsolated && typeof navigator !== "undefined"
+          ? navigator.hardwareConcurrency || 1
+          : 1,
     });
+    return transcriber;
+  })().catch(function (err) {
+    loadingPromise = null;
+    self.postMessage({ type: "error", error: errMsg(err) });
+    throw err;
+  });
 
   return loadingPromise;
 }

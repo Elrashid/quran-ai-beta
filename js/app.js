@@ -223,6 +223,19 @@
       onLevel: function (rms, speaking) {
         updateMeter(rms, speaking);
       },
+      onBackend: function (info) {
+        const dev =
+          info.device === "webgpu"
+            ? "WebGPU (مسرّع بالعتاد)"
+            : "WASM" +
+              (info.threaded
+                ? " متعدّد الخيوط (" + toArabicDigits(info.threads || 1) + ")"
+                : " (خيط واحد)");
+        els.engineNote.textContent =
+          "المحرّك: Whisper-tiny محلياً عبر Transformers.js — يعمل على " +
+          dev +
+          ". النموذج مخزَّن في المتصفّح للعمل دون إنترنت.";
+      },
       onError: function (err) {
         setStatus("خطأ: " + describeError(err), "error");
         els.micBtn.classList.remove("btn--recording");
@@ -232,8 +245,8 @@
     });
     updateThresholdMarker(parseFloat(els.vadRange.value));
     els.engineNote.textContent =
-      "محرّك الصوت: Whisper (Xenova/whisper-base) يعمل محلياً في متصفّحك عبر Transformers.js. " +
-      "يُحمَّل النموذج مرّة واحدة (~عشرات الميغابايت) ثم يُخزَّن للعمل دون إنترنت. يعمل أفضل في Chrome/Edge.";
+      "محرّك الصوت: Whisper-tiny يعمل محلياً عبر Transformers.js (WebGPU عند توفّره، وإلا WASM متعدّد الخيوط). " +
+      "يُحمَّل النموذج مرّة واحدة ثم يُخزَّن للعمل دون إنترنت. يعمل أفضل في Chrome/Edge.";
   } else {
     els.micBtn.disabled = true;
     setMicLabel("الميكروفون غير مدعوم");
