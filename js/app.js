@@ -239,6 +239,10 @@
       },
       onModelProgress: function (info) {
         if (!info || !info.file) return;
+        if (info.status === "fallback") {
+          if (window.Debug) window.Debug.warn(info.file);
+          return;
+        }
         if (window.Debug && (info.status === "initiate" || info.status === "done")) {
           window.Debug.log(
             "نموذج: " +
@@ -277,13 +281,21 @@
               (info.threaded
                 ? " متعدّد الخيوط (" + toArabicDigits(info.threads || 1) + ")"
                 : " (خيط واحد)");
+        const isQuran = info.model === "whisper-base-ar-quran";
+        const modelName = isQuran
+          ? "نموذج قرآني (tarteel whisper-base)"
+          : "Whisper-base عامّ (احتياطي)";
         els.engineNote.textContent =
-          "المحرّك: Whisper-tiny محلياً عبر Transformers.js — يعمل على " +
-          dev +
-          ". النموذج مخزَّن في المتصفّح للعمل دون إنترنت.";
+          "المحرّك: " + modelName + " — يعمل على " + dev + " عبر Transformers.js. " +
+          "النموذج مخزَّن في المتصفّح للعمل دون إنترنت.";
         if (window.Debug) {
-          window.Debug.health("engine", "محرّك التعرّف", "ok", dev);
-          window.Debug.log("المحرّك جاهز: " + dev);
+          window.Debug.health(
+            "engine",
+            "محرّك التعرّف",
+            isQuran ? "ok" : "warn",
+            modelName + " · " + dev
+          );
+          window.Debug.log("المحرّك جاهز: " + modelName + " على " + dev);
         }
       },
       onError: function (err) {
@@ -299,8 +311,8 @@
     });
     updateThresholdMarker(parseFloat(els.vadRange.value));
     els.engineNote.textContent =
-      "محرّك الصوت: Whisper-tiny يعمل محلياً عبر Transformers.js (WebGPU عند توفّره، وإلا WASM متعدّد الخيوط). " +
-      "يُحمَّل النموذج مرّة واحدة ثم يُخزَّن للعمل دون إنترنت. يعمل أفضل في Chrome/Edge.";
+      "محرّك الصوت: نموذج قرآني (tarteel whisper-base) محوّل إلى ONNX ويعمل محلياً عبر Transformers.js " +
+      "(WebGPU عند توفّره). يُحمَّل النموذج مرّة واحدة (~١١٠م.ب) ثم يُخزَّن للعمل دون إنترنت. يعمل أفضل في Chrome/Edge.";
     if (window.Debug) window.Debug.log("SpeechEngine مدعوم — جاهز للبدء.");
   } else {
     els.micBtn.disabled = true;

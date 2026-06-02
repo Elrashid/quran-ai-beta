@@ -1,12 +1,13 @@
 /*
  * عامل الويب (Web Worker) لتشغيل نموذج Whisper محلياً عبر Transformers.js v3
- * (راجع وثيقة المشروع: المرحلة 2 — نموذج محلي يعمل دون إنترنت).
+ * (راجع وثيقة المشروع: المرحلة 2 + المرحلة 4 — نموذج مخصّص للتلاوة).
  *
- * تحسينات الأداء:
- *  - يُفضّل تشغيل النموذج على WebGPU عند توفّره (أسرع بكثير)، مع تراجع آمن إلى
- *    WASM (الذي يصبح متعدّد الخيوط متى كانت الصفحة معزولة عبر الأصول).
- *  - يستخدم نموذج whisper-tiny الأخفّ والأسرع.
- *  - تسخين مبدئي (warm-up) لتفادي بطء أوّل تعرّف (تصريف مظلّلات WebGPU).
+ * النموذج الأساسي: نسخة مخصّصة للتلاوة القرآنية (tarteel-ai/whisper-base-ar-quran)
+ * حُوِّلت إلى ONNX (ترميز fp16 + فكّ ترميز مدمج q4f16) وتُخدَّم محلياً من المستودع
+ * فتعمل دون إنترنت. عند تعذّر تحميله على الجهاز نتراجع تلقائياً إلى نموذج
+ * Whisper العامّ (Xenova/whisper-base) من الشبكة، حتى لا تنكسر التجربة.
+ *
+ * تحسينات: WebGPU عند توفّره مع تراجع إلى WASM، وتسخين مبدئي، ومنع التكرار.
  */
 
 import {
@@ -14,10 +15,18 @@ import {
   env,
 } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3";
 
-env.allowLocalModels = false;
+// نسمح بالنماذج المحلية (من المستودع) والبعيدة (للاحتياطي)، مع التخزين المؤقت.
+env.allowLocalModels = true;
+env.allowRemoteModels = true;
 env.useBrowserCache = true;
+// مسار النماذج المحلية: مجلد models/ بجوار الصفحة (نسبةً إلى موقع العامل).
+env.localModelPath = new URL("../models/", self.location.href).href;
 
-const MODEL_ID = "Xenova/whisper-base"; // أدقّ من tiny، وسريع بما يكفي على WebGPU.
+// النموذج القرآني المحلي + إعداد الدقّة المطابق لأسماء ملفّاته.
+const LOCAL_MODEL = "whisper-base-ar-quran";
+const LOCAL_DTYPE = { encoder_model: "fp16", decoder_model_merged: "q4f16" };
+// النموذج الاحتياطي العامّ (من Hugging Face).
+const FALLBACK_MODEL = "Xenova/whisper-base";
 
 // خيارات توليد تمنع حلقات التكرار (هلوسة Whisper) وتحدّ من زمن الاستدلال.
 const GEN_OPTS = {
@@ -30,6 +39,7 @@ const GEN_OPTS = {
 let transcriber = null;
 let loadingPromise = null;
 let activeDevice = "wasm";
+let activeModel = LOCAL_MODEL;
 // سلسلة وعود لمعالجة مقطع صوتي واحد في كل مرة (تجنّب تداخل الاستدلال).
 let queue = Promise.resolve();
 
@@ -43,24 +53,21 @@ async function supportsWebGPU() {
   }
 }
 
-function buildOptions(device) {
-  const opts = {
+function create(model, device, dtype) {
+  return pipeline("automatic-speech-recognition", model, {
     device: device,
+    dtype: dtype,
     progress_callback: function (info) {
       self.postMessage({ type: "progress", data: info });
     },
-  };
-  if (device === "webgpu") {
-    // ترميز fp32 (متوافق مع أغلب العتاد) وفكّ ترميز q4 (أسرع وأخفّ).
-    opts.dtype = { encoder_model: "fp32", decoder_model_merged: "q4" };
-  } else {
-    opts.dtype = "q8"; // مكمَّم للسرعة والحجم على WASM.
-  }
-  return opts;
+  });
 }
 
-async function create(device) {
-  return pipeline("automatic-speech-recognition", MODEL_ID, buildOptions(device));
+// إعداد دقّة النموذج العامّ الاحتياطي حسب الجهاز.
+function fallbackDtype(device) {
+  return device === "webgpu"
+    ? { encoder_model: "fp32", decoder_model_merged: "q4" }
+    : "q8";
 }
 
 function load() {
@@ -69,16 +76,31 @@ function load() {
 
   loadingPromise = (async function () {
     const wantGPU = await supportsWebGPU();
+    let device = wantGPU ? "webgpu" : "wasm";
+
+    // ١) النموذج القرآني المحلي.
     try {
-      transcriber = await create(wantGPU ? "webgpu" : "wasm");
-      activeDevice = wantGPU ? "webgpu" : "wasm";
-    } catch (err) {
-      if (wantGPU) {
-        // تعذّر WebGPU لأي سبب → تراجع إلى WASM.
-        transcriber = await create("wasm");
-        activeDevice = "wasm";
-      } else {
-        throw err;
+      transcriber = await create(LOCAL_MODEL, device, LOCAL_DTYPE);
+      activeModel = LOCAL_MODEL;
+      activeDevice = device;
+    } catch (errLocal) {
+      self.postMessage({
+        type: "progress",
+        data: { status: "fallback", file: "النموذج القرآني المحلي تعذّر — التحويل إلى النموذج العامّ" },
+      });
+      // ٢) النموذج العامّ على نفس الجهاز، ثم على WASM كحلّ أخير.
+      try {
+        transcriber = await create(FALLBACK_MODEL, device, fallbackDtype(device));
+        activeModel = FALLBACK_MODEL;
+        activeDevice = device;
+      } catch (errRemote) {
+        if (device === "webgpu") {
+          transcriber = await create(FALLBACK_MODEL, "wasm", fallbackDtype("wasm"));
+          activeModel = FALLBACK_MODEL;
+          activeDevice = "wasm";
+        } else {
+          throw errRemote;
+        }
       }
     }
 
@@ -92,6 +114,7 @@ function load() {
     self.postMessage({
       type: "ready",
       device: activeDevice,
+      model: activeModel,
       threaded: !!self.crossOriginIsolated,
       threads:
         self.crossOriginIsolated && typeof navigator !== "undefined"

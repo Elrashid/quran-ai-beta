@@ -77,6 +77,7 @@
           device: m.device,
           threaded: m.threaded,
           threads: m.threads,
+          model: m.model,
         });
         self.onStatus(self.listening ? "listening" : "ready");
       } else if (m.type === "result") {
