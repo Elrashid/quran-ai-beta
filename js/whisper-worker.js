@@ -17,7 +17,15 @@ import {
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
-const MODEL_ID = "Xenova/whisper-tiny"; // خفيف وسريع، متعدّد اللغات (يدعم العربية).
+const MODEL_ID = "Xenova/whisper-base"; // أدقّ من tiny، وسريع بما يكفي على WebGPU.
+
+// خيارات توليد تمنع حلقات التكرار (هلوسة Whisper) وتحدّ من زمن الاستدلال.
+const GEN_OPTS = {
+  language: "arabic",
+  task: "transcribe",
+  no_repeat_ngram_size: 3, // يوقف تكرار المقاطع (مثل «لنقل لنقل…») مبكراً.
+  max_new_tokens: 96, // سقف أمان لطول المخرجات (المقاطع قصيرة أصلاً).
+};
 
 let transcriber = null;
 let loadingPromise = null;
@@ -76,10 +84,7 @@ function load() {
 
     // تسخين مبدئي بمقطع صامت قصير لتصريف المظلّلات/التهيئة.
     try {
-      await transcriber(new Float32Array(16000), {
-        language: "arabic",
-        task: "transcribe",
-      });
+      await transcriber(new Float32Array(16000), GEN_OPTS);
     } catch (e) {
       /* تجاهل أخطاء التسخين */
     }
@@ -105,12 +110,8 @@ function load() {
 
 async function run(id, audio) {
   const t = await load();
-  const output = await t(audio, {
-    language: "arabic",
-    task: "transcribe",
-    chunk_length_s: 30,
-    stride_length_s: 5,
-  });
+  // المقاطع قصيرة (≤ ~6ث) فلا حاجة لتقطيع طويل (chunk_length_s) — تمريرة واحدة أسرع.
+  const output = await t(audio, GEN_OPTS);
   self.postMessage({ type: "result", id: id, text: (output && output.text) || "" });
 }
 

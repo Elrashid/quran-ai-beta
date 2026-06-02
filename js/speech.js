@@ -30,7 +30,7 @@
     this.speechThreshold = options.speechThreshold || 0.012; // طاقة RMS لاعتبار الإطار كلاماً.
     this.silenceMs = options.silenceMs || 450; // مدّة الصمت التي تُنهي المقطع.
     this.minSpeechMs = options.minSpeechMs || 250; // أقل كلام لاعتماد المقطع.
-    this.maxSegmentMs = options.maxSegmentMs || 8000; // حدّ أقصى لطول المقطع.
+    this.maxSegmentMs = options.maxSegmentMs || 6000; // حدّ أقصى لطول المقطع.
 
     this.listening = false;
     this.modelReady = false;
@@ -89,7 +89,12 @@
           "asr",
           "تعرّف #" + m.id + (lat >= 0 ? " (" + lat + "مﺙ)" : "") + ": «" + text + "»"
         );
-        const tokens = text.split(/\s+/).filter(Boolean);
+        let tokens = text.split(/\s+/).filter(Boolean);
+        // سقف أمان: لا نمرّر أكثر من 40 كلمة من مقطع واحد (يمنع أي إغراق محتمل).
+        if (tokens.length > 40) {
+          self.onProc("asr", "تنبيه: مخرجات طويلة (" + tokens.length + ") — قُصّت إلى 40.");
+          tokens = tokens.slice(0, 40);
+        }
         for (let i = 0; i < tokens.length; i++) self.onWord(tokens[i], true);
         if (self._pending === 0 && self.listening) self.onStatus("listening");
       } else if (m.type === "error") {
