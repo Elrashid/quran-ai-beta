@@ -1,0 +1,42 @@
+name: نشر النموذج الأولي على GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# نسمح بنشر واحد متزامن، مع إلغاء النشر الجاري عند وصول دفعة جديدة.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: إعداد وتمكين GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      # الموقع ثابت (HTML/CSS/JS) ويُقدَّم من جذر المستودع كما هو.
+      - name: رفع محتوى الموقع
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "."
+
+      - name: النشر على GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
